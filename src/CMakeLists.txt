@@ -3,3 +3,7 @@ file(GLOB_RECURSE BLOCK_CACHE_HEADER_LIST CONFIGURE_DEPENDS "${PROJECT_SOURCE_DI
 file(GLOB_RECURSE BLOCK_CACHE_LIB_SRC CONFIGURE_DEPENDS "block_cache/*.cpp")
 add_library(block_cache SHARED ${BLOCK_CACHE_LIB_SRC} ${BLOCK_CACHE_HEADER_LIST})
 target_include_directories(block_cache PUBLIC "${PROJECT_SOURCE_DIR}/include")
+
+if(WIN32)
+    target_compile_definitions(block_cache PRIVATE BUILDING_BLOCK_CACHE=1)
+endif()
