@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-int readFileWithMRU(const char *path) {
+int readFileWithMRU(const char *path, size_t iterations = 1) {
   int handle = mru_open(path);
   if (handle < 0) {
     std::cerr << "Failed to open file (errno: " << errno << ")" << std::endl;
@@ -20,24 +20,27 @@ int readFileWithMRU(const char *path) {
   const int BUFFER_SIZE = 4096;
 
   char buf[BUFFER_SIZE] = {0};
-  ssize_t total_bytes = 0;
 
-  for (int it = 0; it < file_size; it += BUFFER_SIZE) {
-    ssize_t n =
-        mru_read(handle, buf,
-                 std::min(static_cast<size_t>(sizeof(buf)),
-                          static_cast<size_t>(file_size - total_bytes)));
+  for (size_t it = 0; it < iterations; ++it) {
+    ssize_t total_bytes = 0;
 
-    if (n < 0) {
-      std::cerr << "Failed to read file (errno: " << errno << ")" << std::endl;
-      mru_close(handle);
-      return 1;
+    for (size_t jt = 0; jt < file_size; jt += BUFFER_SIZE) {
+      ssize_t n =
+          mru_read(handle, buf,
+                   std::min(static_cast<size_t>(sizeof(buf)),
+                            static_cast<size_t>(file_size - total_bytes)));
+
+      if (n < 0) {
+        std::cerr << "Failed to read file (errno: " << errno << ")"
+                  << std::endl;
+        mru_close(handle);
+        return 1;
+      }
+
+      total_bytes += n;
     }
-
-    total_bytes += n;
+    mru_lseek(handle, 0, SEEK_SET);
   }
-
-  ssize_t bytes_read = total_bytes;
 
   int res = mru_close(handle);
   if (res < 0) {
@@ -48,7 +51,7 @@ int readFileWithMRU(const char *path) {
   return 0;
 }
 
-int readFileWithoutMRU(const char *path) {
+int readFileWithoutMRU(const char *path, size_t iterations = 1) {
   int handle = open(path, O_RDONLY);
   if (handle < 0) {
     std::cerr << "Failed to open file (errno: " << errno << ")" << std::endl;
@@ -64,18 +67,22 @@ int readFileWithoutMRU(const char *path) {
   char buf[BUFFER_SIZE] = {0};
   ssize_t total_bytes = 0;
 
-  for (int it = 0; it < file_size; it += BUFFER_SIZE) {
-    ssize_t n = read(handle, buf,
-                     std::min(static_cast<size_t>(sizeof(buf)),
-                              static_cast<size_t>(file_size - total_bytes)));
+  for (size_t it = 0; it < iterations; ++it) {
+    for (size_t jt = 0; jt < file_size; jt += BUFFER_SIZE) {
+      ssize_t n = read(handle, buf,
+                       std::min(static_cast<size_t>(sizeof(buf)),
+                                static_cast<size_t>(file_size - total_bytes)));
 
-    if (n < 0) {
-      std::cerr << "Failed to read file (errno: " << errno << ")" << std::endl;
-      close(handle);
-      return 1;
+      if (n < 0) {
+        std::cerr << "Failed to read file (errno: " << errno << ")"
+                  << std::endl;
+        close(handle);
+        return 1;
+      }
+
+      total_bytes += n;
     }
-
-    total_bytes += n;
+    lseek(handle, 0, SEEK_SET);
   }
 
   ssize_t bytes_read = total_bytes;
@@ -123,22 +130,14 @@ int main(int argc, char *argv[]) {
   generateFile("test_data.bin", file_size);
 
   auto now = std::chrono::high_resolution_clock::now();
-  for (int it = 0; it < iterations; ++it) {
-    if (readFileWithMRU("test_data.bin") != 0) {
-      return 1;
-    }
-  }
+  readFileWithMRU("test_data.bin", iterations);
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> elapsed_seconds = end - now;
   std::cout << "Time taken with MRU: " << elapsed_seconds.count() << "s"
             << std::endl;
 
   now = std::chrono::high_resolution_clock::now();
-  for (int it = 0; it < iterations; ++it) {
-    if (readFileWithoutMRU("test_data.bin") != 0) {
-      return 1;
-    }
-  }
+  readFileWithoutMRU("test_data.bin", iterations);
   end = std::chrono::high_resolution_clock::now();
   elapsed_seconds = end - now;
   std::cout << "Time taken with default caching: " << elapsed_seconds.count()
