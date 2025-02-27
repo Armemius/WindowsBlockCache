@@ -3,6 +3,7 @@
 #include <cmath>
 #include <fstream>
 #include <iostream>
+#include <random>
 #include <string>
 #include <vector>
 #include <wtypes.h>
@@ -54,6 +55,53 @@ int readFileWithMRU(const char *path, size_t iterations = 1) {
   return 0;
 }
 
+int randomlyReadFileWithMRU(const char *path, size_t iterations = 1) {
+  int handle = mru_open(path);
+  if (handle < 0) {
+    std::cerr << "Failed to open file (errno: " << errno << ")" << std::endl;
+    return 1;
+  }
+
+  off_t current_pos = mru_lseek(handle, 0, SEEK_CUR);
+  off_t file_size = mru_lseek(handle, 0, SEEK_END);
+
+  mru_lseek(handle, current_pos, SEEK_SET);
+
+  const int BUFFER_SIZE = 4096;
+
+  int positions = file_size / BUFFER_SIZE;
+
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  std::uniform_int_distribution<> distrib(0, positions - 1);
+
+  char buf[BUFFER_SIZE] = {0};
+
+  for (size_t it = 0; it < iterations * positions; ++it) {
+    ssize_t total_bytes = 0;
+
+    mru_lseek(handle, BUFFER_SIZE * distrib(gen), SEEK_SET);
+    ssize_t n =
+        mru_read(handle, buf,
+                 std::min(static_cast<size_t>(sizeof(buf)),
+                          static_cast<size_t>(file_size - total_bytes)));
+
+    if (n < 0) {
+      std::cerr << "Failed to read file (errno: " << errno << ")" << std::endl;
+      mru_close(handle);
+      return 1;
+    }
+  }
+
+  int res = mru_close(handle);
+  if (res < 0) {
+    std::cerr << "Failed to close file (errno: " << errno << ")" << std::endl;
+    return 1;
+  }
+
+  return 0;
+}
+
 int readFileWithoutMRU(const char *path, size_t iterations = 1) {
   int handle = open(path, O_RDONLY);
   if (handle < 0) {
@@ -89,6 +137,52 @@ int readFileWithoutMRU(const char *path, size_t iterations = 1) {
   }
 
   ssize_t bytes_read = total_bytes;
+
+  int res = close(handle);
+  if (res < 0) {
+    std::cerr << "Failed to close file (errno: " << errno << ")" << std::endl;
+    return 1;
+  }
+
+  return 0;
+}
+
+int randomlyReadFileWithoutMRU(const char *path, size_t iterations = 1) {
+  int handle = open(path, O_RDONLY);
+  if (handle < 0) {
+    std::cerr << "Failed to open file (errno: " << errno << ")" << std::endl;
+    return 1;
+  }
+
+  off_t current_pos = lseek(handle, 0, SEEK_CUR);
+  off_t file_size = lseek(handle, 0, SEEK_END);
+
+  lseek(handle, current_pos, SEEK_SET);
+
+  const int BUFFER_SIZE = 4096;
+
+  int positions = file_size / BUFFER_SIZE;
+
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  std::uniform_int_distribution<> distrib(0, positions - 1);
+
+  char buf[BUFFER_SIZE] = {0};
+
+  for (size_t it = 0; it < iterations * positions; ++it) {
+    ssize_t total_bytes = 0;
+
+    lseek(handle, BUFFER_SIZE * distrib(gen), SEEK_SET);
+    ssize_t n = read(handle, buf,
+                     std::min(static_cast<size_t>(sizeof(buf)),
+                              static_cast<size_t>(file_size - total_bytes)));
+
+    if (n < 0) {
+      std::cerr << "Failed to read file (errno: " << errno << ")" << std::endl;
+      close(handle);
+      return 1;
+    }
+  }
 
   int res = close(handle);
   if (res < 0) {
@@ -193,14 +287,28 @@ int main(int argc, char *argv[]) {
   readFileWithMRU("test_data.bin", iterations);
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> elapsed_seconds = end - now;
-  std::cout << "Time taken with MRU: " << elapsed_seconds.count() << "s"
+  std::cout << "Time taken with MRU (Seq): " << elapsed_seconds.count() << "s"
             << std::endl;
 
   now = std::chrono::high_resolution_clock::now();
   readFileWithoutMRU("test_data.bin", iterations);
   end = std::chrono::high_resolution_clock::now();
   elapsed_seconds = end - now;
-  std::cout << "Time taken with default caching: " << elapsed_seconds.count()
+  std::cout << "Time taken with default caching (Seq): "
+            << elapsed_seconds.count() << "s" << std::endl;
+
+  now = std::chrono::high_resolution_clock::now();
+  randomlyReadFileWithMRU("test_data.bin", iterations);
+  end = std::chrono::high_resolution_clock::now();
+  elapsed_seconds = end - now;
+  std::cout << "Time taken with MRU (R/A): " << elapsed_seconds.count() << "s"
+            << std::endl;
+
+  now = std::chrono::high_resolution_clock::now();
+  randomlyReadFileWithoutMRU("test_data.bin", iterations);
+  end = std::chrono::high_resolution_clock::now();
+  elapsed_seconds = end - now;
+  std::cout << "Time taken without MRU (R/A): " << elapsed_seconds.count()
             << "s" << std::endl;
 
   now = std::chrono::high_resolution_clock::now();
