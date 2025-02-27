@@ -124,10 +124,6 @@ int readFileNoCache(const char *path, size_t iterations = 1) {
     DWORD bytesRead = 0;
     while (ReadFile(file, buffer, blockSize, &bytesRead, NULL) &&
            bytesRead > 0) {
-      volatile char tmp = 0;
-      for (DWORD i = 0; i < bytesRead; ++i) {
-        tmp ^= static_cast<char *>(buffer)[i];
-      }
     }
   }
 
@@ -151,10 +147,6 @@ int readFileNoCache(const char *path, size_t iterations = 1) {
     lseek(fd, 0, SEEK_SET);
     ssize_t bytesRead = 0;
     while ((bytesRead = read(fd, buffer, alignment)) > 0) {
-      volatile char tmp = 0;
-      for (ssize_t i = 0; i < bytesRead; ++i) {
-        tmp ^= static_cast<char *>(buffer)[i];
-      }
     }
   }
 
